@@ -4,7 +4,7 @@ import dotenv from 'dotenv'
 import session from 'express-session'
 import passport from 'passport'
 import connectDB from './config/database.js'
-import User from './models/User.js' // Add this import
+import User from './models/User.js'
 import './config/passport.js'
 
 // Import routes
@@ -28,6 +28,7 @@ app.use(session({
   resave: false,
   saveUninitialized: false,
   cookie: {
+    secure: process.env.NODE_ENV === 'production',
     maxAge: 24 * 60 * 60 * 1000 // 24 hours
   }
 }))
@@ -41,7 +42,7 @@ passport.serializeUser((user, done) => {
   done(null, user.id)
 })
 
-// Deserialize user from session - FIX: User is now imported
+// Deserialize user from session
 passport.deserializeUser(async (id, done) => {
   try {
     const user = await User.findById(id)
@@ -51,16 +52,40 @@ passport.deserializeUser(async (id, done) => {
   }
 })
 
-// Middleware
+// CORS - Allow frontend domains
+const allowedOrigins = [
+  'http://localhost:5173',
+  'http://localhost:3000',
+  'http://127.0.0.1:5173',
+  'https://glowhavengd.netlify.app',    // Your live frontend
+  'https://glowhaven.netlify.app',      // Alternative URL
+  process.env.FRONTEND_URL
+].filter(Boolean)
+
 app.use(cors({
-  origin: ['http://localhost:5173', 'http://localhost:3000', 'http://127.0.0.1:5173'],
+  origin: function (origin, callback) {
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) return callback(null, true)
+    
+    // Check if origin is allowed
+    if (allowedOrigins.indexOf(origin) !== -1 || process.env.NODE_ENV === 'development') {
+      callback(null, true)
+    } else {
+      console.warn('CORS blocked origin:', origin)
+      callback(new Error('Not allowed by CORS'))
+    }
+  },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization']
 }))
 
+// Middleware
 app.use(express.json({ limit: '50mb' }))
 app.use(express.urlencoded({ extended: true, limit: '50mb' }))
+
+// Serve static files (for uploaded invoices)
+app.use('/uploads', express.static('uploads'))
 
 // API Routes
 app.use('/api/products', productRoutes)
@@ -74,7 +99,9 @@ app.get('/api/health', (req, res) => {
   res.json({ 
     status: 'ok', 
     message: 'Glow Haven API is running',
-    timestamp: new Date().toISOString()
+    timestamp: new Date().toISOString(),
+    environment: process.env.NODE_ENV || 'development',
+    uptime: process.uptime()
   })
 })
 
