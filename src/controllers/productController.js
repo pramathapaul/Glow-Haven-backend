@@ -1,30 +1,41 @@
 import Product from '../models/Product.js'
 
-// Get all products with filters
+// Improve search function in productController.js
 export const getProducts = async (req, res) => {
   try {
     const { category, subcategory, search, sort, minPrice, maxPrice, page = 1, limit = 20 } = req.query
     
     const filter = { isActive: true }
     
+    // Category filter
     if (category && category !== 'All') {
       filter.category = category
     }
     
+    // Subcategory filter
     if (subcategory) {
       filter.subcategory = subcategory
     }
     
+    // Search filter - IMPROVED
     if (search) {
-      filter.$text = { $search: search }
+      filter.$or = [
+        { name: { $regex: search, $options: 'i' } },
+        { desc: { $regex: search, $options: 'i' } },
+        { category: { $regex: search, $options: 'i' } },
+        { subcategory: { $regex: search, $options: 'i' } },
+        { details: { $regex: search, $options: 'i' } }
+      ]
     }
     
+    // Price range filter
     if (minPrice || maxPrice) {
       filter.price = {}
       if (minPrice) filter.price.$gte = parseFloat(minPrice)
       if (maxPrice) filter.price.$lte = parseFloat(maxPrice)
     }
     
+    // Sort options
     let sortOption = {}
     switch (sort) {
       case 'price_asc':
@@ -40,7 +51,6 @@ export const getProducts = async (req, res) => {
         sortOption = { createdAt: -1 }
         break
       case 'discount':
-        // Sort by discount percentage (virtual field)
         sortOption = { discountPercent: -1 }
         break
       default:
@@ -49,21 +59,21 @@ export const getProducts = async (req, res) => {
     
     const skip = (parseInt(page) - 1) * parseInt(limit)
     
-    const products = await Product.find(filter)
-      .sort(sortOption)
-      .skip(skip)
-      .limit(parseInt(limit))
-      .lean()
+    const [products, total] = await Promise.all([
+      Product.find(filter)
+        .sort(sortOption)
+        .skip(skip)
+        .limit(parseInt(limit))
+        .lean(),
+      Product.countDocuments(filter)
+    ])
     
-    const total = await Product.countDocuments(filter)
-    
-    // Calculate discount percent for each product
+    // Calculate discount for each product
     const productsWithDiscount = products.map(product => {
-      const discountPercent = product.mrp && product.price && product.mrp > 0 
+      const discountPercent = product.mrp && product.price && product.mrp > 0
         ? Math.round(((product.mrp - product.price) / product.mrp) * 100)
         : 0
       
-      // If product has colors, calculate discount for each color
       let colorsWithDiscount = null
       if (product.hasColors && product.colors) {
         colorsWithDiscount = product.colors.map(color => {
@@ -96,6 +106,7 @@ export const getProducts = async (req, res) => {
       }
     })
   } catch (error) {
+    console.error('Get products error:', error)
     res.status(500).json({ success: false, message: error.message })
   }
 }
