@@ -55,7 +55,7 @@ export const createOrder = async (req, res) => {
     }
     
     const finalSubtotal = subtotal || calculatedSubtotal
-    const finalShippingCost = shippingCost !== undefined ? shippingCost : (finalSubtotal > 1000 ? 0 : 50)
+    const finalShippingCost = shippingCost !== undefined ? shippingCost : (finalSubtotal > 5000 ? 0 : 90)
     const finalTax = tax || 0
     const finalTotal = total || (finalSubtotal + finalShippingCost + finalTax)
     
